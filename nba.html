@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Channels + EPG</title>
+  <link href="https://vjs.zencdn.net/7.16.0/video-js.css" rel="stylesheet" />
+  <script src="https://vjs.zencdn.net/7.16.0/video.min.js"></script>
+  <style>
+    body {
+      background-color: #1e1e1e;
+      font-family: Arial, sans-serif;
+      color: #fff;
+      text-align: center;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    #channel-icons {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .channel-icon {
+      width: 120px;
+      height: 80px;
+      object-fit: contain;
+      border-radius: 10px;
+      background-color: #b4d7f7;
+      padding: 10px;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    .channel-icon:hover {
+      transform: scale(1.08);
+      background-color: silver;
+    }
+
+    .video-container {
+      max-width: 720px;
+      margin: 0 auto 30px;
+      border-radius: 10px;
+      background-color: #000;
+      overflow: hidden;
+    }
+
+    .video-js {
+      width: 100%;
+      height: 320px !important;
+    }
+
+    .epg-block {
+      max-width: 700px;
+      margin: 0 auto 10px;
+      background-color: #2d2d2d;
+      padding: 10px 15px;
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    .epg-block h3 {
+      margin: 0 0 5px;
+      color: #9ecfff;
+      font-size: 16px;
+    }
+
+    .epg-block p {
+      margin: 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Live Channels + Now Playing</h1>
+  <div id="channel-icons"></div>
+
+  <div class="video-container">
+    <video id="my-video" class="video-js vjs-default-skin" controls autoplay preload="auto">
+      <source id="video-source" src="" type="application/x-mpegURL" />
+      Your browser does not support the video tag.
+    </video>
+  </div>
+
+  <div id="epg">
+    <div class="epg-block" id="epg-abc">
+      <h3>ABC</h3>
+      <p>Loading...</p>
+    </div>
+    <div class="epg-block" id="epg-espn">
+      <h3>ESPN</h3>
+      <p>Loading...</p>
+    </div>
+    <div class="epg-block" id="epg-tnt">
+      <h3>TNT</h3>
+      <p>Loading...</p>
+    </div>
+  </div>
+
+  <script>
+    var player = videojs('my-video');
+
+    function playChannel(url) {
+      document.getElementById('video-source').src = url;
+      player.src({ src: url, type: 'application/x-mpegURL' });
+      player.play();
+    }
+
+    function loadChannelData() {
+      fetch('nba.txt')
+        .then(response => response.text())
+        .then(data => {
+          const lines = data.trim().split('\n\n');
+          const channelIcons = document.getElementById('channel-icons');
+
+          lines.forEach(line => {
+            const [name, url, img] = line.trim().split('\n');
+            const icon = new Image();
+            icon.src = img.trim();
+            icon.alt = name.trim();
+            icon.title = name.trim();
+            icon.classList.add('channel-icon');
+            icon.setAttribute('data-stream-url', url.trim());
+            icon.addEventListener('click', function() {
+              playChannel(this.getAttribute('data-stream-url'));
+            });
+            channelIcons.appendChild(icon);
+          });
+        })
+        .catch(err => console.error('Failed to load channels:', err));
+    }
+
+    function fetchEPG(epgId, displayName) {
+      fetch('http://3.bjk.ai:5009/epg.xml')
+        .then(response => response.text())
+        .then(xmlText => {
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(xmlText, 'text/xml');
+          const now = new Date();
+          const nowTime = now.getTime();
+
+          const items = xml.querySelectorAll(`programme[channel="${epgId}"]`);
+          let match = null;
+
+          for (const item of items) {
+            const start = parseEPGTime(item.getAttribute('start'));
+            const stop = parseEPGTime(item.getAttribute('stop'));
+
+            if (nowTime >= start.getTime() && nowTime < stop.getTime()) {
+              match = item;
+              break;
+            }
+          }
+
+          const target = document.querySelector(`#epg-${displayName.toLowerCase()} p`);
+
+          if (match) {
+            const title = match.querySelector('title')?.textContent || 'Untitled';
+            const desc = match.querySelector('desc')?.textContent || '';
+            const start = parseEPGTime(match.getAttribute('start'));
+            const stop = parseEPGTime(match.getAttribute('stop'));
+            target.innerText = `${title} (${formatTime(start)} - ${formatTime(stop)})\n${desc}`;
+          } else {
+            target.innerText = 'No current listing found.';
+          }
+        })
+        .catch(() => {
+          document.querySelector(`#epg-${displayName.toLowerCase()} p`).innerText = 'Failed to load EPG.';
+        });
+    }
+
+    function parseEPGTime(epgTime) {
+      const parts = epgTime.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+      return new Date(parts[1], parts[2]-1, parts[3], parts[4], parts[5], parts[6]);
+    }
+
+    function formatTime(date) {
+      return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    loadChannelData();
+    fetchEPG('ABC.(WABC).New.York,.NY.us', 'ABC');
+    fetchEPG('ESPN.us', 'ESPN');
+    fetchEPG('TNT.-.Eastern.Feed.us', 'TNT');
+  </script>
+</body>
+</html>

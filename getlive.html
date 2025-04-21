@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Info Fetcher with TS Player</title>
+    <link href="https://vjs.zencdn.net/7.21.0/video-js.css" rel="stylesheet">
+    <script src="https://vjs.zencdn.net/7.21.0/video.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@latest"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+            /* New rule for logo size */
+        table img {
+                width: 50px;
+                height: auto;
+                object-fit: contain;
+            }
+            
+        /* Sticky player at the top */
+        #videoContainer {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: #000;
+            padding: 10px;
+            box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        video {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            display: block;
+            background-color: black;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+        }
+
+        button {
+            padding: 10px 15px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        .response {
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+                
+        table {
+            table-layout: fixed; /* Fix table layout */
+            width: 100%; /* Keep the table within its container */
+            border-collapse: collapse;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            word-wrap: break-word; /* Allow text to wrap within cells */
+            overflow: hidden; /* Hide overflow if necessary */
+            max-width: 150px; /* Set a max width for all cells */
+        }
+        
+        th {
+            background-color: #f2f2f2;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Sticky player container -->
+    <div id="videoContainer">
+        <video id="videoElement" class="video-js vjs-default-skin" controls autoplay></video>
+    </div>
+
+    <div class="container">
+        <h2>Get Main Info</h2>
+        <div class="input-group">
+            <label for="serverUrl">Server URL:</label>
+            <input type="text" id="serverUrl" placeholder="Enter server URL (e.g., http://ibrafr.com:8789)" oninput="processServerUrl()">
+        </div>
+        <div class="input-group">
+            <label for="macAddress">MAC Address:</label>
+            <input type="text" id="macAddress" placeholder="Enter MAC address (e.g., 00:1A:79:58:11:69)">
+        </div>
+        <button onclick="fetchMainInfo()">Get Main Info</button>
+        <button onclick="fetchAllChannels()">Get All Channels</button>
+        
+        <div class="input-group">
+            <label for="searchChannel">Search Channel Name:</label>
+            <input type="text" id="searchChannel" placeholder="Enter channel name" oninput="filterChannels()">
+        </div>
+
+        <div class="response" id="responseOutput"></div>
+        
+        <table id="channelsTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Logo</th>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Command</th>
+                    <th>Link</th>
+                    <th>Stream URL</th>
+                    <th>Play</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script>
+        let channelsData = []; // Store original data for filtering
+
+        // Initialize MPEGTS.js player
+        const videoElement = document.getElementById('videoElement');
+        let mpegtsPlayer;
+
+        function initializePlayer(url) {
+            if (mpegtsPlayer) {
+                mpegtsPlayer.destroy();
+            }
+
+            mpegtsPlayer = mpegts.createPlayer({
+                type: 'mse',
+                isLive: true,
+                url: url
+            });
+
+            mpegtsPlayer.attachMediaElement(videoElement);
+            mpegtsPlayer.load();
+            mpegtsPlayer.play().catch(err => {
+                console.error("Playback error:", err);
+                alert("Unable to play the stream.");
+            });
+        }
+        
+        function processServerUrl() {
+            const serverUrlField = document.getElementById("serverUrl");
+            const macAddressField = document.getElementById("macAddress");
+            const input = serverUrlField.value;
+        
+            if (input.includes(" ")) {
+                const [url, mac] = input.split(" ");
+                serverUrlField.value = url; // Keep only the URL part
+                macAddressField.value = mac; // Set the MAC address part
+            }
+        }
+
+
+        function fetchMainInfo() {
+            const serverUrl = document.getElementById("serverUrl").value;
+            const macAddress = document.getElementById("macAddress").value;
+
+            if (!serverUrl || !macAddress) {
+                alert("Please enter both Server URL and MAC Address.");
+                return;
+            }
+
+            const requestUrl = `${serverUrl}/server/load.php?type=account_info&JsHttpRequest=1-xml&action=get_main_info&mac=${macAddress}`;
+            
+            fetch(requestUrl)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("responseOutput").innerText = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    document.getElementById("responseOutput").innerText = "Error fetching data: " + error;
+                });
+        }
+
+        function fetchAllChannels() {
+            const serverUrl = document.getElementById("serverUrl").value;
+            const macAddress = document.getElementById("macAddress").value;
+
+            if (!serverUrl || !macAddress) {
+                alert("Please enter both Server URL and MAC Address.");
+                return;
+            }
+
+            const requestUrl = `${serverUrl}/server/load.php?action=get_all_channels&type=itv&mac=${macAddress}`;
+            
+            fetch(requestUrl)
+                .then(response => response.json())
+                .then(data => {
+                    channelsData = data.js.data; // Store data for filtering
+                    displayChannels(channelsData, serverUrl, macAddress);
+                })
+                .catch(error => {
+                    document.getElementById("responseOutput").innerText = "Error fetching data: " + error;
+                });
+        }
+
+        function displayChannels(channels, serverUrl, macAddress) {
+            const table = document.getElementById("channelsTable");
+            const tbody = table.querySelector("tbody");
+
+            tbody.innerHTML = ''; // Clear previous entries
+
+            channels.forEach(channel => {
+                const row = document.createElement("tr");
+
+                const logoCell = document.createElement("td");
+                const logoImg = document.createElement("img");
+                logoImg.src = channel.logo || ""; // Fallback if no logo provided
+                logoCell.appendChild(logoImg);
+                row.appendChild(logoCell);
+
+                const idCell = document.createElement("td");
+                idCell.innerText = channel.id;
+                row.appendChild(idCell);
+
+                const nameCell = document.createElement("td");
+                nameCell.innerText = channel.name;
+                row.appendChild(nameCell);
+
+                const cmdCell = document.createElement("td");
+                cmdCell.innerText = channel.cmd;
+                row.appendChild(cmdCell);
+
+                const linkCell = document.createElement("td");
+                const link = `${serverUrl}/portal.php?type=itv&action=create_link&cmd=${encodeURIComponent(channel.cmd)}&mac=${macAddress}`;
+                const linkButton = document.createElement("a");
+                linkButton.href = "#";
+                linkButton.innerText = "Open Link";
+                linkButton.onclick = (event) => {
+                    event.preventDefault();
+                    fetchStreamUrl(link, row);
+                };
+                linkCell.appendChild(linkButton);
+                row.appendChild(linkCell);
+
+                const streamUrlCell = document.createElement("td");
+                streamUrlCell.className = "streamUrl";
+                row.appendChild(streamUrlCell);
+
+                const playCell = document.createElement("td");
+                const playButton = document.createElement("button");
+                playButton.innerText = "Play";
+                playButton.onclick = () => {
+                    const streamUrl = streamUrlCell.innerText;
+                    if (streamUrl) {
+                        initializePlayer(streamUrl);
+                    } else {
+                        alert("Stream URL not available yet.");
+                    }
+                };
+                playCell.appendChild(playButton);
+                row.appendChild(playCell);
+
+                tbody.appendChild(row);
+            });
+
+            table.style.display = "table";
+        }
+
+        function fetchStreamUrl(link, row) {
+            fetch(link)
+                .then(response => response.json())
+                .then(data => {
+                    const cmdString = data.js.cmd;
+                    const streamUrl = cmdString.substring(cmdString.indexOf("http"), cmdString.length);
+                    const streamUrlCell = row.querySelector(".streamUrl");
+                    streamUrlCell.innerText = streamUrl;
+                })
+                .catch(error => {
+                    console.error("Error fetching stream URL:", error);
+                    const streamUrlCell = row.querySelector(".streamUrl");
+                    streamUrlCell.innerText = "Error fetching stream URL";
+                });
+        }
+
+        function filterChannels() {
+            const searchValue = document.getElementById("searchChannel").value.toLowerCase();
+            const filteredChannels = channelsData.filter(channel => 
+                channel.name.toLowerCase().includes(searchValue)
+            );
+            const serverUrl = document.getElementById("serverUrl").value;
+            const macAddress = document.getElementById("macAddress").value;
+
+            displayChannels(filteredChannels, serverUrl, macAddress);
+        }
+    </script>
+</body>
+</html>
